@@ -73,8 +73,8 @@ None of the corresponding config parameters can be changed at runtime.
 	-->
 	<logger logFolderName="simviz_log_files"
 		logFrequency="100"
-		enabledAtStartup="false"
-		addTimestampToFilename="false" />
+		enabledAtStartup="true"
+		addTimestampToFilename="true" />
 
 	<!--
 	The optional <forceSensor> element allows to define a simulated force sensor.

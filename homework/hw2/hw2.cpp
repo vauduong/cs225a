@@ -2,6 +2,7 @@
 #include <math.h>
 
 #include <iostream>
+#include <fstream>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -110,11 +111,14 @@ int main(int argc, char** argv) {
 
     // record initial configuration
     VectorXd initial_q = robot->q();
-
+    VectorXd q_desired = initial_q;
     // create a loop timer
     const double control_freq = 1000;
     SaiCommon::LoopTimer timer(control_freq);
 
+    //for writing out
+    ofstream file_2;
+	file_2.open("../../homework/hw2/q2.txt");
     while (runloop) {
         // wait for next scheduled loop
         timer.waitForNextLoop();
@@ -132,20 +136,56 @@ int main(int argc, char** argv) {
 
         // ---------------------------  question 1 ---------------------------------------
         if(controller_number == 1) {
+            const double kpi = 400.0;
+            const double kvi = 50.0;
+            
+            const double kp7 = 50.0;
+            const double kv7 = -0.29;
 
-            control_torques.setZero();
+            q_desired << initial_q;
+            q_desired(6) = 0.1;
+            
+            //set torque for all other joints
+            control_torques = -kpi*(robot->q() - q_desired) -kvi*robot->dq() + robot->coriolisForce() + robot->jointGravityVector();  
+
+            //modify torque for joint 7
+            control_torques(6) = -kp7*(robot->q()(6)-0.1) - kv7*robot->dq()(6) + robot->coriolisForce()(6) + robot->jointGravityVector()(6);
         }
 
         // ---------------------------  question 2 ---------------------------------------
         else if(controller_number == 2) {
+            const double kp = 200.0;
+            const double kv = 28.0;
+            const double kvj = 10.0;
+            q_desired << initial_q;
 
-            control_torques.setZero();
+            Vector3d x = robot->positionInWorld(link_name, pos_in_link);
+            Vector3d x_desired(0.3, 0.1, 0.5);
+            Vector3d x_dot = robot->linearVelocity(link_name, pos_in_link);
+            VectorXd q = robot->q();
+            VectorXd q_dot = robot->dq();
+            control_torques = robot->Jv(link_name, pos_in_link).transpose() * (robot->taskInertiaMatrix(Jv)* (-kp*(x - x_desired) - kv*x_dot)) + robot->jointGravityVector() + robot->nullspaceMatrix(robot->Jv(link_name, pos_in_link)).transpose() * robot->M() * (-1.0 * kvj*q_dot);
+            
+            file_2 << time << "\t" << x(0) << "\t" << x(1) << "\t" << x(2) << "\t" << q(0) << "\t" << q(1) << "\t" << q(2) << "\t" << q(3) << "\t" << q(4) << "\t" << q(5) << "\t" << q(6) << "\n"; 
         }
 
         // ---------------------------  question 3 ---------------------------------------
         else if(controller_number == 3) {
+            const double kp = 200.0;
+            const double kv = 28.0;
+            const double kvj = 10.0;
 
-            control_torques.setZero();
+            q_desired << initial_q;
+
+            Vector3d x = robot->positionInWorld(link_name, pos_in_link);
+            Vector3d x_desired(0.3, 0.1, 0.5);
+            Vector3d x_dot = robot->linearVelocity(link_name, pos_in_link);
+            VectorXd q = robot->q();
+            VectorXd q_dot = robot->dq();
+            control_torques = robot->Jv(link_name, pos_in_link).transpose() * (robot->taskInertiaMatrix(Jv)* (-kp*(x - x_desired) - kv*x_dot) - robot->dynConsistentInverseJacobian(robot->Jv(link_name, pos_in_link)) * robot->jointGravityVector()) + robot->nullspaceMatrix(robot->Jv(link_name, pos_in_link)).transpose() * robot->M() * (kvj*q_dot);
+            
+            file_2 << time << "\t" << x(0) << "\t" << x(1) << "\t" << x(2) << "\t" << q(0) << "\t" << q(1) << "\t" << q(2) << "\t" << q(3) << "\t" << q(4) << "\t" << q(5) << "\t" << q(6) << "\n"; 
+        
         }
 
         // ---------------------------  question 4 ---------------------------------------
@@ -166,6 +206,7 @@ int main(int argc, char** argv) {
     gravity_comp_enabled = true;
     redis_client.sendAllFromGroup();
 
+    file_2.close();
     timer.stop();
     cout << "\nControl loop timer stats:\n";
     timer.printInfoPostRun();
