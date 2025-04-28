@@ -117,8 +117,8 @@ int main(int argc, char** argv) {
     SaiCommon::LoopTimer timer(control_freq);
 
     //for writing out
-    ofstream file_2;
-	file_2.open("../../homework/hw2/q2.txt");
+    ofstream file;
+	file.open("../../homework/hw2/hw2.txt");
     while (runloop) {
         // wait for next scheduled loop
         timer.waitForNextLoop();
@@ -164,9 +164,12 @@ int main(int argc, char** argv) {
             Vector3d x_dot = robot->linearVelocity(link_name, pos_in_link);
             VectorXd q = robot->q();
             VectorXd q_dot = robot->dq();
-            control_torques = robot->Jv(link_name, pos_in_link).transpose() * (robot->taskInertiaMatrix(Jv)* (-kp*(x - x_desired) - kv*x_dot)) + robot->jointGravityVector() + robot->nullspaceMatrix(robot->Jv(link_name, pos_in_link)).transpose() * robot->M() * (-1.0 * kvj*q_dot);
+
+            MatrixXd task_jacobian = robot->Jv(link_name, pos_in_link);
+            MatrixXd F = robot->taskInertiaMatrix(task_jacobian)*(-kp*(x - x_desired) - kv*x_dot);
+            control_torques =  task_jacobian.transpose() * F + robot->jointGravityVector() -robot->nullspaceMatrix(task_jacobian)*robot->M()*kvj*q_dot;
             
-            file_2 << time << "\t" << x(0) << "\t" << x(1) << "\t" << x(2) << "\t" << q(0) << "\t" << q(1) << "\t" << q(2) << "\t" << q(3) << "\t" << q(4) << "\t" << q(5) << "\t" << q(6) << "\n"; 
+            file << time << "\t" << x(0) << "\t" << x(1) << "\t" << x(2) << "\t" << q(0) << "\t" << q(1) << "\t" << q(2) << "\t" << q(3) << "\t" << q(4) << "\t" << q(5) << "\t" << q(6) << "\n"; 
         }
 
         // ---------------------------  question 3 ---------------------------------------
@@ -182,16 +185,38 @@ int main(int argc, char** argv) {
             Vector3d x_dot = robot->linearVelocity(link_name, pos_in_link);
             VectorXd q = robot->q();
             VectorXd q_dot = robot->dq();
-            control_torques = robot->Jv(link_name, pos_in_link).transpose() * (robot->taskInertiaMatrix(Jv)* (-kp*(x - x_desired) - kv*x_dot) - robot->dynConsistentInverseJacobian(robot->Jv(link_name, pos_in_link)) * robot->jointGravityVector()) + robot->nullspaceMatrix(robot->Jv(link_name, pos_in_link)).transpose() * robot->M() * (kvj*q_dot);
+
+            MatrixXd task_jacobian = robot->Jv(link_name, pos_in_link);
+            MatrixXd p = robot->dynConsistentInverseJacobian(task_jacobian).transpose() * robot->jointGravityVector();
+            MatrixXd F = robot->taskInertiaMatrix(task_jacobian)*(-kp*(x - x_desired) - kv*x_dot) + p;
+            control_torques =  task_jacobian.transpose() * F - robot->nullspaceMatrix(task_jacobian).transpose() * robot->M() * kvj*q_dot;
             
-            file_2 << time << "\t" << x(0) << "\t" << x(1) << "\t" << x(2) << "\t" << q(0) << "\t" << q(1) << "\t" << q(2) << "\t" << q(3) << "\t" << q(4) << "\t" << q(5) << "\t" << q(6) << "\n"; 
-        
+            file << time << "\t" << x(0) << "\t" << x(1) << "\t" << x(2) << "\t" << q(0) << "\t" << q(1) << "\t" << q(2) << "\t" << q(3) << "\t" << q(4) << "\t" << q(5) << "\t" << q(6) << "\n"; 
+            
         }
 
         // ---------------------------  question 4 ---------------------------------------
         else if(controller_number == 4) {
+            const double kp = 200.0;
+            const double kv = 72.0;
+            const double kvj = 4.0;
 
-            control_torques.setZero();
+            q_desired << initial_q;
+
+            Vector3d x = robot->positionInWorld(link_name, pos_in_link);
+            Vector3d x_desired(0.3 + 0.1*sin(M_PI*time), 0.1+ 0.1*cos(M_PI*time), 0.5);
+            Vector3d x_dot = robot->linearVelocity(link_name, pos_in_link);
+            VectorXd q = robot->q();
+            VectorXd q_dot = robot->dq();
+            Vector6d q_desired(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+
+            MatrixXd task_jacobian = robot->Jv(link_name, pos_in_link);
+            MatrixXd p = robot->dynConsistentInverseJacobian(task_jacobian).transpose() * robot->jointGravityVector();
+            MatrixXd F = robot->taskInertiaMatrix(task_jacobian)*(-kp*(x - x_desired) - kv*x_dot) + p;
+            control_torques =  task_jacobian.transpose() * F + robot->M()*(-kp*(q-q_desired)-kv*q_dot) + robot->jointGravityVector();
+            
+            file << time << "\t" << x(0) << "\t" << x(1) << "\t" << x(2) << "\t" << q(0) << "\t" << q(1) << "\t" << q(2) << "\t" << q(3) << "\t" << q(4) << "\t" << q(5) << "\t" << q(6) << "\n"; 
+            
         }
 
         // **********************
@@ -206,7 +231,7 @@ int main(int argc, char** argv) {
     gravity_comp_enabled = true;
     redis_client.sendAllFromGroup();
 
-    file_2.close();
+    file.close();
     timer.stop();
     cout << "\nControl loop timer stats:\n";
     timer.printInfoPostRun();
